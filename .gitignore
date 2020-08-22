@@ -9,3 +9,7 @@
 
 # rspec failure tracking
 .rspec_status
+
+# RubyMine files
+.rakeTasks
+.idea
