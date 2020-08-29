@@ -1,0 +1,205 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'optparse'
+require 'ostruct'
+require 'time'
+require 'unifi_protect'
+
+class UnifiProtectCommand
+  MODE = %w[
+    list_cameras
+    describe_cameras
+    snapshot
+    video_export
+  ].freeze
+
+  attr_reader :options
+  attr_reader :option_parser
+
+  def initialize
+    initialize_options
+  end
+
+  def initialize_options
+    @options = OpenStruct.new({
+      host: nil,
+      port: 7443,
+      username: nil,
+      password: nil,
+      mode: [],
+      match: OpenStruct.new,
+    })
+  end
+
+  DURATIONS = { 'd' => 24 * 60 * 60, 'h' => 60 * 60, 'm' => 60, 's' => 1 }.freeze
+
+  def parse_duration(str)
+    str.split(/([dhms])/).map { |t| DURATIONS[t] || t.to_i }.each_slice(2).map { |t, m| t * (m || 1) }.sum
+  end
+
+  def parse_options(args)
+    @option_parser = OptionParser.new do |opts|
+      opts.on('-h', '--help', 'Show this help.') do
+        puts opts
+      end
+      opts.on('-H', '--host=HOST', 'Hostname of the UniFi Protect controller') { |o| options.host = o }
+      opts.on('-P', '--port=PORT', 'TCP Port of the UniFi Protect controller') { |o| options.port = o.to_i }
+      opts.on('-u', '--username=USERNAME', 'Username for HTTP basic authentication') { |o| options.username = o }
+      opts.on('-p', '--password=PASSWORD', 'Password for HTTP basic authentication') { |o| options.password = o }
+
+      opts.on('-o', '--output-path=PATH') { |o| options.output_path = o }
+
+      opts.on('-s', '--start-time=TIME') { |o| options.start_time = Time.parse(o) }
+      opts.on('-e', '--end-time=TIME') { |o| options.end_time = Time.parse(o) }
+      opts.on('-d', '--duration=SECONDS') { |o| options.end_time = options.start_time + parse_duration(o) }
+
+      opts.on('--list-cameras') { options.mode << :list_cameras }
+      opts.on('--describe-cameras') { options.mode << :describe_cameras }
+      opts.on('--snapshot') { options.mode << :snapshot }
+      opts.on('--video-export') { options.mode << :video_export }
+
+      opts.on('--id=ID') do |o|
+        options.match.id ||= []
+        options.match.id += o.split(',')
+      end
+
+      opts.on('--name=NAME') do |o|
+        options.match.name ||= []
+        options.match.name += o.split(',').map { |s| Regexp.new(s) }
+      end
+
+      opts.on('--connected') { options.match.connected = true}
+      opts.on('--recording') { options.match.recording = true}
+      opts.on('--dark') { options.match.dark = true}
+      opts.on('--motion-detected') { options.match.motion_detected = true}
+    end
+
+    option_parser.parse!(args)
+
+    validate_options
+
+    self
+  end
+
+  def validate_options
+    raise 'unknown host' unless options.host
+    raise 'unknown username' unless options.username
+    raise 'unknown password' unless options.password
+  end
+
+  def match_cameras
+    cameras = @client.cameras
+
+    cameras = cameras.match(id: options.match.id) if options.match.id
+    cameras = cameras.match(name: options.match.name) if options.match.name
+
+    cameras = cameras.connected if options.match.connected
+    cameras = cameras.recording if options.match.recording
+
+    cameras = cameras.dark if options.match.dark
+    cameras = cameras.motion_detected if options.match.motion_detected
+
+    cameras.to_a
+  end
+
+  def to_name(field)
+    field.to_s.gsub(/([A-Z])/, ' \1').sub(/^[a-z]/) { |s| s.upcase }
+  end
+
+  def cameras
+    @cameras ||= match_cameras
+  end
+
+  def list_cameras
+    return if cameras.empty?
+
+    puts '%-30s%-40s%-20s%-20s' % %w[ID Name Type State]
+    cameras.to_a.each do |camera|
+      puts '%-30s%-40s%-20s%-20s' % [camera.id, camera.name, camera.type, camera.state]
+    end
+  end
+
+  def describe_cameras
+    cameras.to_a.each do |camera|
+      %i[
+        id
+        name
+        type
+        mac
+        state
+        hardwareRevision
+        firmwareVersion
+        firmwareBuild
+        upSince
+        connectedSince
+        lastMotion
+        lastRing
+        lastSeen
+      ].each do |field|
+        puts '%-20s: %s' % [to_name(field), camera.send(field) || '(none)']
+      end
+      puts
+    end
+  end
+
+  def snapshot
+    cameras.each do |camera|
+      print "Downloading snapshot from #{camera.id}, #{camera.name}... "
+
+      begin
+        file = camera.snapshot
+        puts 'OK, %.0f KiB.' % [file.size / 1024.0]
+      rescue UnifiProtect::Camera::SnapshotError => e
+        puts "Failed: #{e}"
+      end
+    end
+  end
+
+  def video_export
+    puts "Exporting video for #{cameras.count} cameras from #{options.start_time} to #{options.end_time}."
+    puts
+
+    cameras.each do |camera|
+      print "Downloading video from #{camera.id}, #{camera.name}... "
+
+      begin
+        file = camera.video_export(start_time: options.start_time, end_time: options.end_time)
+        puts 'OK, %.0f KiB.' % [file.size / 1024.0]
+      rescue UnifiProtect::Camera::VideoExportError => e
+        puts "Failed: #{e}"
+      end
+    end
+  end
+
+  def run
+    if options.output_path
+      raise "output path #{options.output_path} does not exist" unless File.exist?(options.output_path)
+    end
+
+    @client = UnifiProtect::Client.new(
+      host: options.host,
+      port: options.port,
+      username: options.username,
+      password: options.password,
+      download_path: options.output_path
+    )
+
+    options.mode.each do |mode|
+      case mode
+      when :list_cameras
+        list_cameras
+      when :describe_cameras
+        describe_cameras
+      when :snapshot
+        snapshot
+      when :video_export
+        video_export
+      end
+
+      puts
+    end
+  end
+end
+
+UnifiProtectCommand.new.parse_options(ARGV).run

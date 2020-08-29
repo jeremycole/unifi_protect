@@ -8,13 +8,16 @@ module UnifiProtect
     class RefreshBearerTokenError < StandardError; end
     class RequestError < StandardError; end
 
+    DownloadedFile = Struct.new(:file, :size, keyword_init: true)
+
     attr_reader :bearer_token
 
-    def initialize(host:, port:, username:, password:)
+    def initialize(host:, port:, username:, password:, download_path: nil)
       @host = host
       @port = port
       @username = username
       @password = password
+      @download_path = download_path
 
       refresh_bearer_token
     end
@@ -118,12 +121,15 @@ module UnifiProtect
     end
 
     def download_file(uri, method: :get, body: nil, local_file:)
-      File.open(local_file, 'wb') do |f|
+      file = local_file
+      file = File.join(@download_path, file) if @download_path
+
+      File.open(file, 'wb') do |f|
         r = request_with_chunked_response(uri, method: method, body: body) do |chunk, _total, _length|
           f.write(chunk)
         end
 
-        { file: local_file, size: r.content_length }
+        DownloadedFile.new(file: file, size: r.content_length)
       end
     end
 
