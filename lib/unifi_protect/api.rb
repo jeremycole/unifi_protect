@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'net/http'
 require 'json'
 
@@ -15,6 +17,14 @@ module UnifiProtect
       @password = password
 
       refresh_bearer_token
+    end
+
+    def to_s
+      "#<#{self.class.name} base_uri=#{base_uri.to_s.inspect} username=#{@username.inspect}>"
+    end
+
+    def inspect
+      to_s
     end
 
     def base_uri
@@ -42,7 +52,7 @@ module UnifiProtect
 
     def http_post_with_username_password(uri)
       headers = {
-        'Content-Type' => 'application/json',
+        'Content-Type' => 'application/json'
       }
       request = Net::HTTP::Post.new(uri.request_uri, headers)
       request.body = { username: @username, password: @password }.to_json
@@ -53,7 +63,7 @@ module UnifiProtect
     def http_post_with_bearer_token(uri, body: nil)
       headers = {
         'Content-Type' => 'application/json',
-        'Authorization' => 'Bearer ' + bearer_token,
+        'Authorization' => 'Bearer ' + bearer_token
       }
       request = Net::HTTP::Post.new(uri.request_uri, headers)
       request.body = body
