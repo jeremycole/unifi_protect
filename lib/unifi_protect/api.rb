@@ -10,16 +10,12 @@ module UnifiProtect
 
     DownloadedFile = Struct.new(:file, :size, keyword_init: true)
 
-    attr_reader :bearer_token
-
-    def initialize(host:, port:, username:, password:, download_path: nil)
+    def initialize(host: nil, port: 7443, username: nil, password: nil, download_path: nil)
       @host = host
       @port = port
       @username = username
       @password = password
       @download_path = download_path
-
-      refresh_bearer_token
     end
 
     def to_s
@@ -96,6 +92,18 @@ module UnifiProtect
       @bearer_token = response['Authorization']
     end
 
+    def bearer_token
+      @bearer_token ||= refresh_bearer_token
+    end
+
+    def request_with_raw_response(uri, method: :get, body: nil, exception_class: RequestError)
+      response = http_client.request(http_request_with_bearer_token(uri, method: method, body: body))
+
+      raise exception_class, "#{response.code} #{response.msg}: #{response.body}" unless response.code == '200'
+
+      response.body
+    end
+
     def request_with_json_response(uri, method: :get, body: nil, exception_class: RequestError)
       response = http_client.request(http_request_with_bearer_token(uri, method: method, body: body))
 
@@ -131,6 +139,10 @@ module UnifiProtect
 
         DownloadedFile.new(file: file, size: r.content_length)
       end
+    end
+
+    def bootstrap_json
+      request_with_raw_response(uri(path: 'bootstrap'))
     end
 
     def bootstrap

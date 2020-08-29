@@ -158,7 +158,7 @@ class UnifiProtectCommand
       end
     end
 
-    cameras.to_a
+    cameras
   end
 
   def to_name(field)
@@ -173,13 +173,13 @@ class UnifiProtectCommand
     return if cameras.empty?
 
     puts format('%-30s%-40s%-20s%-20s', 'ID', 'Name', 'Type', 'State')
-    cameras.to_a.each do |camera|
+    cameras.each do |camera|
       puts format('%-30s%-40s%-20s%-20s', camera.id, camera.name, camera.type, camera.state)
     end
   end
 
   def describe_cameras
-    cameras.to_a.each do |camera|
+    cameras.each do |camera|
       %i[
         id
         name

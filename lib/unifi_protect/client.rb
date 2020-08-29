@@ -4,8 +4,8 @@ module UnifiProtect
   class Client
     attr_reader :api
 
-    def initialize(host:, port: 7443, username:, password:, download_path: nil)
-      @api = API.new(host: host, port: port, username: username, password: password, download_path: download_path)
+    def initialize(api: nil, **args)
+      @api = api || API.new(**args)
     end
 
     def bootstrap
