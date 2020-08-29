@@ -7,12 +7,7 @@ require 'time'
 require 'unifi_protect'
 
 class UnifiProtectCommand
-  MODE = %w[
-    list_cameras
-    describe_cameras
-    snapshot
-    video_export
-  ].freeze
+  class BadOptionError < StandardError; end
 
   attr_reader :options
   attr_reader :option_parser
@@ -22,14 +17,14 @@ class UnifiProtectCommand
   end
 
   def initialize_options
-    @options = OpenStruct.new({
+    @options = OpenStruct.new(
       host: nil,
       port: 7443,
       username: nil,
       password: nil,
       mode: [],
-      match: OpenStruct.new,
-    })
+      match: OpenStruct.new
+    )
   end
 
   DURATIONS = { 'd' => 24 * 60 * 60, 'h' => 60 * 60, 'm' => 60, 's' => 1 }.freeze
@@ -38,41 +33,97 @@ class UnifiProtectCommand
     str.split(/([dhms])/).map { |t| DURATIONS[t] || t.to_i }.each_slice(2).map { |t, m| t * (m || 1) }.sum
   end
 
+  def match_value(value)
+    return true if value == 'true'
+    return false if value == 'false'
+
+    value
+  end
+
+  def add_matcher(field, matcher)
+    options.match[field] ||= []
+    options.match[field] << match_value(matcher)
+  end
+
   def parse_options(args)
     @option_parser = OptionParser.new do |opts|
       opts.on('-h', '--help', 'Show this help.') do
         puts opts
-      end
-      opts.on('-H', '--host=HOST', 'Hostname of the UniFi Protect controller') { |o| options.host = o }
-      opts.on('-P', '--port=PORT', 'TCP Port of the UniFi Protect controller') { |o| options.port = o.to_i }
-      opts.on('-u', '--username=USERNAME', 'Username for HTTP basic authentication') { |o| options.username = o }
-      opts.on('-p', '--password=PASSWORD', 'Password for HTTP basic authentication') { |o| options.password = o }
-
-      opts.on('-o', '--output-path=PATH') { |o| options.output_path = o }
-
-      opts.on('-s', '--start-time=TIME') { |o| options.start_time = Time.parse(o) }
-      opts.on('-e', '--end-time=TIME') { |o| options.end_time = Time.parse(o) }
-      opts.on('-d', '--duration=SECONDS') { |o| options.end_time = options.start_time + parse_duration(o) }
-
-      opts.on('--list-cameras') { options.mode << :list_cameras }
-      opts.on('--describe-cameras') { options.mode << :describe_cameras }
-      opts.on('--snapshot') { options.mode << :snapshot }
-      opts.on('--video-export') { options.mode << :video_export }
-
-      opts.on('--id=ID') do |o|
-        options.match.id ||= []
-        options.match.id += o.split(',')
+        exit 0
       end
 
-      opts.on('--name=NAME') do |o|
-        options.match.name ||= []
-        options.match.name += o.split(',').map { |s| Regexp.new(s) }
+      opts.on('-H', '--host=HOST', 'Hostname of the UniFi Protect controller.') { |o| options.host = o }
+      opts.on('-P', '--port=PORT', 'TCP Port of the UniFi Protect controller.') { |o| options.port = o.to_i }
+      opts.on('-u', '--username=USERNAME', 'Username for HTTP basic authentication.') { |o| options.username = o }
+      opts.on('-p', '--password=PASSWORD', 'Password for HTTP basic authentication.') { |o| options.password = o }
+
+      opts.on('--list-cameras', 'List all matched cameras.') { options.mode << :list_cameras }
+      opts.on('--describe-cameras', 'Describe all matched cameras in detail.') { options.mode << :describe_cameras }
+
+      opts.on('-o', '--output-path=PATH', 'Specify a local path to save downloaded files to.') do |o|
+        options.output_path = o
       end
 
-      opts.on('--connected') { options.match.connected = true}
-      opts.on('--recording') { options.match.recording = true}
-      opts.on('--dark') { options.match.dark = true}
-      opts.on('--motion-detected') { options.match.motion_detected = true}
+      opts.on('--snapshot', 'Download a recent snapshot from each matched camera.') { options.mode << :snapshot }
+
+      opts.on('--video-export', 'Download saved video for each matched camera.') { options.mode << :video_export }
+
+      opts.on('-s', '--start-time=TIME', "Start time for video, e.g. '2020-08-29 01:02:00 PDT'.") do |o|
+        options.start_time = Time.parse(o)
+      end
+
+      opts.on('-e', '--end-time=TIME', "End time for video, e.g. '2020-08-29 01:02:30 PDT'.") do |o|
+        options.end_time = Time.parse(o)
+      end
+
+      opts.on('-d', '--duration=DURATION', "Duration of video with units, e.g. '10s', '2m30s', or '1h10m'.") do |o|
+        options.end_time = options.start_time + parse_duration(o)
+      end
+
+      opts.on('--match=MATCH', 'Match cameras by field=value case-sensitively using a regular expression.') do |o|
+        o.split(',').each do |arg|
+          field, value = arg.split('=')
+          add_matcher(field, Regexp.new(value))
+        end
+      end
+
+      opts.on('--match-i=MATCH', 'Match cameras by field=value case-insensitively using a regular expression.') do |o|
+        o.split(',').each do |arg|
+          field, value = arg.split('=')
+          add_matcher(field, Regexp.new(value, Regexp::IGNORECASE))
+        end
+      end
+
+      opts.on('--exact=MATCH', 'Match cameras by field=value using an exact string match.') do |o|
+        o.split(',').each do |arg|
+          field, value = arg.split('=')
+          add_matcher(field, value)
+        end
+      end
+
+      opts.on('--id=ID', 'Match cameras by exact camera ID.') do |o|
+        o.split(',').each { |id| add_matcher(:id, id) }
+      end
+
+      opts.on('--name=NAME', 'Match cameras by name using a case-insensitive regular expression.') do |o|
+        o.split(',').each { |name| add_matcher(:name, Regexp.new(name, Regexp::IGNORECASE)) }
+      end
+
+      opts.on('--[no-]connected', 'Match cameras currently connected.') do |o|
+        options.match.connected = o
+      end
+
+      opts.on('--[no-]recording', 'Match cameras currently recording.') do |o|
+        options.match.recording = o
+      end
+
+      opts.on('--[no-]dark', 'Match cameras currently detecting darkness.') do |o|
+        options.match.dark = o
+      end
+
+      opts.on('--[no-]motion-detected', 'Match cameras recently detecting motion.') do |o|
+        options.match.motion_detected = o
+      end
     end
 
     option_parser.parse!(args)
@@ -83,28 +134,35 @@ class UnifiProtectCommand
   end
 
   def validate_options
-    raise 'unknown host' unless options.host
-    raise 'unknown username' unless options.username
-    raise 'unknown password' unless options.password
+    raise BadOptionError, 'Missing required --host option' unless options.host
+    raise BadOptionError, 'Missing required --username option' unless options.username
+    raise BadOptionError, 'Missing required --password option' unless options.password
+
+    if options.mode.include?(:video_export) && !(options.start_time && options.end_time)
+      raise BadOptionError, 'The --video-export option requires --start-time and either --end-time or --duration'
+    end
+
+    true
   end
 
   def match_cameras
     cameras = @client.cameras
 
-    cameras = cameras.match(id: options.match.id) if options.match.id
-    cameras = cameras.match(name: options.match.name) if options.match.name
-
-    cameras = cameras.connected if options.match.connected
-    cameras = cameras.recording if options.match.recording
-
-    cameras = cameras.dark if options.match.dark
-    cameras = cameras.motion_detected if options.match.motion_detected
+    options.match.to_h.each do |field, value|
+      # puts "Adding camera match filter on #{field} = #{value}"
+      case value
+      when TrueClass, FalseClass
+        cameras = cameras.filter(field, value)
+      else
+        cameras = cameras.match(field => value)
+      end
+    end
 
     cameras.to_a
   end
 
   def to_name(field)
-    field.to_s.gsub(/([A-Z])/, ' \1').sub(/^[a-z]/) { |s| s.upcase }
+    field.to_s.gsub(/([A-Z])/, ' \1').sub(/^[a-z]/, &:upcase)
   end
 
   def cameras
@@ -114,9 +172,9 @@ class UnifiProtectCommand
   def list_cameras
     return if cameras.empty?
 
-    puts '%-30s%-40s%-20s%-20s' % %w[ID Name Type State]
+    puts format('%-30s%-40s%-20s%-20s', 'ID', 'Name', 'Type', 'State')
     cameras.to_a.each do |camera|
-      puts '%-30s%-40s%-20s%-20s' % [camera.id, camera.name, camera.type, camera.state]
+      puts format('%-30s%-40s%-20s%-20s', camera.id, camera.name, camera.type, camera.state)
     end
   end
 
@@ -137,7 +195,7 @@ class UnifiProtectCommand
         lastRing
         lastSeen
       ].each do |field|
-        puts '%-20s: %s' % [to_name(field), camera.send(field) || '(none)']
+        puts format('%-20s: %s', to_name(field), camera.send(field) || '(none)')
       end
       puts
     end
@@ -149,7 +207,7 @@ class UnifiProtectCommand
 
       begin
         file = camera.snapshot
-        puts 'OK, %.0f KiB.' % [file.size / 1024.0]
+        puts format('OK, %.0f KiB.', file.size / 1024.0)
       rescue UnifiProtect::Camera::SnapshotError => e
         puts "Failed: #{e}"
       end
@@ -165,7 +223,7 @@ class UnifiProtectCommand
 
       begin
         file = camera.video_export(start_time: options.start_time, end_time: options.end_time)
-        puts 'OK, %.0f KiB.' % [file.size / 1024.0]
+        puts format('OK, %.0f KiB.', file.size / 1024.0)
       rescue UnifiProtect::Camera::VideoExportError => e
         puts "Failed: #{e}"
       end

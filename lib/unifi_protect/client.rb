@@ -13,7 +13,7 @@ module UnifiProtect
     end
 
     def create_camera_objects
-      bootstrap['cameras'].map { |camera| Camera.new(client: self, camera: camera) }
+      bootstrap.cameras.map { |camera| Camera.new(client: self, camera: camera) }
     end
 
     def cameras

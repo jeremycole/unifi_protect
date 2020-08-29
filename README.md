@@ -79,6 +79,15 @@ yyyyyyyyyyyyyyyyyyyyyyyy      Barn towards House                      UVC G3 Pro
 zzzzzzzzzzzzzzzzzzzzzzzz      Back of House Looking South             UVC G3 Flex         CONNECTED           
 ```
 
+More advanced filtering can be done using `--match`, `--match-i` and `--exact` arguments:
+
+```
+$ unifi_protect -H 1.2.3.4 -u bob -p secret --connected --match-i type=doorbell --list-cameras
+
+ID                            Name                                    Type                State
+xxxxxxxxxxxxxxxxxxxxxxxx      Front Door                              UVC G4 Doorbell     CONNECTED
+```
+
 More information about each camera can be obtained with `--describe-cameras`:
 
 ```

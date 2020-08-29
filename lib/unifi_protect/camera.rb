@@ -35,7 +35,7 @@ module UnifiProtect
 
     def match(name, matcher)
       return matcher.match(send(name)) if matcher.is_a?(Regexp)
-      return send(name) == matcher if matcher.is_a?(String)
+      return send(name) == matcher if matcher.is_a?(String) || [true, false].include?(matcher)
       return matcher.any? { |item| match(name, item) } if matcher.is_a?(Array)
 
       if matcher.is_a?(Hash)

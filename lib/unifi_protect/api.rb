@@ -55,7 +55,7 @@ module UnifiProtect
 
     def http_post_with_username_password(uri)
       headers = {
-        'Content-Type' => 'application/json'
+        'Content-Type' => 'application/json',
       }
       request = Net::HTTP::Post.new(uri.request_uri, headers)
       request.body = { username: @username, password: @password }.to_json
@@ -66,7 +66,7 @@ module UnifiProtect
     def http_post_with_bearer_token(uri, body: nil)
       headers = {
         'Content-Type' => 'application/json',
-        'Authorization' => 'Bearer ' + bearer_token
+        'Authorization' => 'Bearer ' + bearer_token,
       }
       request = Net::HTTP::Post.new(uri.request_uri, headers)
       request.body = body
@@ -76,7 +76,7 @@ module UnifiProtect
 
     def http_get_with_bearer_token(uri)
       headers = {
-        'Authorization' => 'Bearer ' + bearer_token
+        'Authorization' => 'Bearer ' + bearer_token,
       }
       Net::HTTP::Get.new(uri.request_uri, headers)
     end

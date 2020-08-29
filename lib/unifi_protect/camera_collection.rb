@@ -18,7 +18,7 @@ module UnifiProtect
 
       # Real-world status
       dark: :isDark,
-      motion_detected: :isMotionDetected
+      motion_detected: :isMotionDetected,
     }.freeze
 
     def initialize(cameras)
@@ -32,7 +32,7 @@ module UnifiProtect
     end
 
     def method_missing(method_name, *args)
-      return filter(method_name) if FILTERS.include?(method_name)
+      return filter(method_name, *args) if FILTERS.include?(method_name)
 
       @cameras.send(method_name, *args)
     end
@@ -45,15 +45,15 @@ module UnifiProtect
       )
     end
 
-    def fetch(id)
-      match(id: id).first
+    def fetch(**attrs)
+      match(**attrs).first
     end
 
-    def filter(name)
+    def filter(name, value = true)
       return [] if @cameras.empty?
       raise 'unknown filter' unless FILTERS.include?(name.to_sym)
 
-      CameraCollection.new(@cameras.select(&FILTERS.fetch(name.to_sym)))
+      CameraCollection.new(@cameras.select { |c| c.send(FILTERS.fetch(name.to_sym)) == value })
     end
   end
 end
