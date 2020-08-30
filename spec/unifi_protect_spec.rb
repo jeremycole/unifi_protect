@@ -5,7 +5,7 @@ RSpec.describe UnifiProtect do
     expect(UnifiProtect::VERSION).not_to be nil
   end
 
-  it 'does something useful' do
-    expect(false).to eq(true)
+  it 'is a module' do
+    expect(UnifiProtect).to be_an_instance_of(Module)
   end
 end
