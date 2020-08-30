@@ -12,6 +12,10 @@ module UnifiProtect
       @bootstrap ||= api.bootstrap
     end
 
+    def nvr
+      @nvr ||= NVR.new(client: self, nvr: bootstrap.nvr)
+    end
+
     def create_camera_objects
       bootstrap.cameras.map { |camera| Camera.new(client: self, camera: camera) }
     end

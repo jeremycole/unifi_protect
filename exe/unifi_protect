@@ -9,6 +9,36 @@ require 'unifi_protect'
 class UnifiProtectCommand
   class BadOptionError < StandardError; end
 
+  NVR_FIELDS = %i[
+    id
+    name
+    type
+    mac
+    host
+    version
+    hardwareId
+    hardwarePlatform
+    hardwareRevision
+    firmwareVersion
+    upSince
+  ].freeze
+
+  CAMERA_FIELDS = %i[
+    id
+    name
+    type
+    mac
+    state
+    hardwareRevision
+    firmwareVersion
+    firmwareBuild
+    upSince
+    connectedSince
+    lastMotion
+    lastRing
+    lastSeen
+  ].freeze
+
   attr_reader :options
   attr_reader :option_parser
 
@@ -56,6 +86,8 @@ class UnifiProtectCommand
       opts.on('-P', '--port=PORT', 'TCP Port of the UniFi Protect controller.') { |o| options.port = o.to_i }
       opts.on('-u', '--username=USERNAME', 'Username for HTTP basic authentication.') { |o| options.username = o }
       opts.on('-p', '--password=PASSWORD', 'Password for HTTP basic authentication.') { |o| options.password = o }
+
+      opts.on('--describe-nvr', 'Describe NVR in detail.') { options.mode << :describe_nvr }
 
       opts.on('--list-cameras', 'List all matched cameras.') { options.mode << :list_cameras }
       opts.on('--describe-cameras', 'Describe all matched cameras in detail.') { options.mode << :describe_cameras }
@@ -165,6 +197,40 @@ class UnifiProtectCommand
     field.to_s.gsub(/([A-Z])/, ' \1').sub(/^[a-z]/, &:upcase)
   end
 
+  def nvr
+    @client.nvr
+  end
+
+  def human_size(size)
+    format('%0.2f GiB', size / (1024.0 ** 3))
+  end
+
+  def describe_nvr
+    NVR_FIELDS.each do |field|
+      puts format('%-20s: %s', to_name(field), nvr.send(field) || '(none)')
+    end
+
+    puts format('%-20s:', 'Storage Info')
+    %i[totalSize totalSpaceUsed].each do |field|
+      puts format('  %-18s: %s', to_name(field), human_size(nvr.storageInfo.send(field)))
+    end
+
+    puts format('  %-18s:', 'Hard Drives')
+    nvr.storageInfo.hardDrives.each_with_index do |hd, i|
+      puts format(
+        '    %-16s: %s',
+        format('Hard Drive %d', i),
+        format(
+          '%s (size=%s, serial=%s, health=%s)',
+          hd.name,
+          human_size(hd.size),
+          hd.serial,
+          hd.health
+        )
+      )
+    end
+  end
+
   def cameras
     @cameras ||= match_cameras
   end
@@ -180,21 +246,7 @@ class UnifiProtectCommand
 
   def describe_cameras
     cameras.each do |camera|
-      %i[
-        id
-        name
-        type
-        mac
-        state
-        hardwareRevision
-        firmwareVersion
-        firmwareBuild
-        upSince
-        connectedSince
-        lastMotion
-        lastRing
-        lastSeen
-      ].each do |field|
+      CAMERA_FIELDS.each do |field|
         puts format('%-20s: %s', to_name(field), camera.send(field) || '(none)')
       end
       puts
@@ -245,6 +297,8 @@ class UnifiProtectCommand
 
     options.mode.each do |mode|
       case mode
+      when :describe_nvr
+        describe_nvr
       when :list_cameras
         list_cameras
       when :describe_cameras
