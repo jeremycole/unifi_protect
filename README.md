@@ -1,6 +1,6 @@
 # An unofficial UniFi Protect API in Ruby
 
-![Build Status for jeremycole/unifi_protect](https://travis-ci.org/jeremycole/unifi_protect.svg?branch=master)
+[![rspec test status](https://github.com/jeremycole/unifi_protect/actions/workflows/rspec.yml/badge.svg)](https://github.com/jeremycole/unifi_protect/actions/workflows/rspec.yml)
 
 This is an implementation of (parts of) [UniFi Protect](https://unifi-network.ui.com/building-security) API, which is primarily designed to support the local web interface. The API allows access to camera configuration, status, and of course the ability to collect real-time snapshots and export recorded video from the NVR.
 
